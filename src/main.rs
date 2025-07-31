@@ -1,14 +1,16 @@
-// Create virtual sink
-// > pactl load-module module-null-sink sink_name=MySink sink_properties=device.description=MySink
-// But the program still does not work :(
-// It looks like the sink is broken as when it is running no sound can be played at all (not just this program)
+// Update 2
+// Found issue: the Rust programm cannot read the stream normally... 
+// Using pipeware (and gpwgraph) I was able to read the audio from sink and send it to stream, 
+// but reading the sink from Rust always sends 0s (nothing read)...
+
+
 
 use libpulse_binding::{self as pulse, stream::State};
 use pulse::{
     context::Context,
     mainloop::standard::Mainloop,
     sample::{Format, Spec},
-    stream::Stream,
+    stream::{PeekResult, Stream},
 };
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -44,42 +46,36 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         pulse::stream::FlagSet::NOFLAGS,
     )?;
 
-    // Create playback stream (to default output)
-    let mut playback_stream = Stream::new(&mut context, "Playback", &spec, None)
-        .expect("Failed to create playback stream");
-    playback_stream.connect_playback(
-        None, // Default output device
-        None,                                               // Default buffer attributes
-        pulse::stream::FlagSet::NOFLAGS,
-        None, // No volume adjustment
-        None,
-    )?;
+    let stream_ptr = &capture_stream as *const _ as *mut pulse::stream::Stream;
 
-    println!("Audio pipeline active. Press Ctrl+C to stop.");
-
-    // Main processing loop
-    loop {
-        mainloop.iterate(false);
-
-        // Check stream states
-        if capture_stream.get_state() != State::Ready || playback_stream.get_state() != State::Ready
-        {
-            continue;
-        }
-
-        // Process audio chunks
-        match capture_stream.peek()? {
-            pulse::stream::PeekResult::Data(data) => {
-                playback_stream.write(data, None, 0, pulse::stream::SeekMode::Relative)?;
-            }
-
-            pulse::stream::PeekResult::Hole(size) => {
-                // Handle buffer hole (rare case)
-                eprintln!("Buffer hole of {} bytes", size);
-            }
-            pulse::stream::PeekResult::Empty => {
-                // No data available yet
+    capture_stream.set_read_callback(Some(Box::new(move |readable_bytes| {
+        unsafe {
+            // Create buffer for the readable data
+            match (*stream_ptr).peek() {
+                Ok(PeekResult::Data(data)) => {
+                    println!("Should Read :(");
+                    // Process the audio data if needed
+                    // Then write to playback
+                    for &byte in data {
+                        if byte != 0 {
+                            print!("{:02x}", byte); // Print non-zero bytes
+                        }
+                    }
+                }
+                Ok(PeekResult::Hole(len)) => {
+                    // Handle audio hole (silence)
+                    eprintln!("Audio hole detected ({} bytes)", len);
+                }
+                Ok(PeekResult::Empty) => {
+                    // Buffer is empty
+                }
+                Err(e) => {
+                    eprintln!("Peek error: {}", e);
+                }
             }
         }
-    }
+    })));
+
+    mainloop.run().expect("ERORR");
+    Ok(())
 }

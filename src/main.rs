@@ -1,34 +1,38 @@
-// Autor: ScriptLuck
+// Main file
+// Update 5: Implemented generic approach (removed hardcoded staff), now it may work on any PulseAudio/Pipewire device :)
 
-// main.rs
+mod sink;
+use sink::VirtualSink;
 
-// Update 4: Fixed latency issue, now all working just fine
+use std::io;
+use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::thread;
 
 use libpulse_binding::def::BufferAttr;
-use libpulse_binding::sample::{Format, Spec};
 use libpulse_binding::stream::Direction;
 use libpulse_simple_binding::Simple;
 
 fn main() {
-    let spec = Spec {
-        format: Format::S32le,
-        channels: 2,
-        rate: 44100,
-    };
+    const APP_NAME: &str = "Echo Difffer";
+    let sink_name = "EchoDifffer";
+
+    let virtual_sink = VirtualSink::new(sink_name, APP_NAME);
+    let spec = virtual_sink.original_spec();
 
     let buffer_attr = BufferAttr {
-        maxlength: u32::MAX, // Maximum buffer length ~ auto
-        tlength: 1024,       // Target length (samples)
-        prebuf: 1024,        // Pre-buffering
-        minreq: 256,         // Minimum request
-        fragsize: 256,       // Fragment size
+        maxlength: u32::MAX,
+        tlength: 1024,
+        prebuf: 1024,
+        minreq: 256,
+        fragsize: 256,
     };
 
     let record = Simple::new(
         None,
-        "Echo Difffer",
+        APP_NAME,
         Direction::Record,
-        Some("MySink.monitor"),
+        Some(&virtual_sink.monitor_name()),
         "Audio Record",
         &spec,
         None,
@@ -38,9 +42,9 @@ fn main() {
 
     let playback = Simple::new(
         None,
-        "Echo Difffer",
+        APP_NAME,
         Direction::Playback,
-        Some("alsa_output.pci-0000_00_1f.3.analog-stereo"), // Output device
+        Some(&virtual_sink.original_source()),
         "Audio Playback",
         &spec,
         None,
@@ -48,9 +52,22 @@ fn main() {
     )
     .expect("Failed to create playback stream");
 
-    let mut buf = [0u8; 1024];
-    loop {
-        record.read(&mut buf).expect("Failed to read audio");
-        playback.write(&buf).expect("Playback failed");
+    // spawn another thread
+    let running = Arc::new(AtomicBool::new(true));
+    let r = running.clone();
+
+    thread::spawn(move || {
+        println!(
+            "Type anything (+ Enter) to close the app peacefully\nOtherwise your device sound might not be broken... :("
+        );
+        let mut input = String::new();
+        io::stdin().read_line(&mut input).unwrap();
+        r.store(false, Ordering::Relaxed);
+    });
+
+    let mut buffer = [0u8; 1024];
+    while running.load(Ordering::Relaxed) {
+        record.read(&mut buffer).expect("Failed to read audio");
+        playback.write(&buffer).expect("Playback failed");
     }
 }

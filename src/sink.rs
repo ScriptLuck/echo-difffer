@@ -1,5 +1,9 @@
 // Virtual Sink Management
 
+// sync operations
+use std::sync::{Arc, Mutex};
+
+// Audio control
 use libpulse_binding::{
     callbacks::ListResult,
     context::{Context, FlagSet, State},
@@ -8,7 +12,6 @@ use libpulse_binding::{
     proplist::{Proplist, properties},
     sample::Spec,
 };
-use std::sync::{Arc, Mutex};
 
 pub struct VirtualSink {
     name: String,

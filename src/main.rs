@@ -1,13 +1,19 @@
 // Main file
 
+// Volume Adjustments
+mod volume;
+
+// Virtual Sink
 mod sink;
 use sink::VirtualSink;
 
+// I/O and sync
 use std::io;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::thread;
 
+// Audio control
 use libpulse_binding::def::BufferAttr;
 use libpulse_binding::stream::Direction;
 use libpulse_simple_binding::Simple;
@@ -74,14 +80,27 @@ fn main() {
     });
 
     // Sound Buffer
-    let mut buffer = [0u8; 1024];
-    
+    let mut buf = vec![0u8; 1024]; // Raw bytes (format-agnostic)
+
     // Use while loop to finish the application as intended
     while running.load(Ordering::Relaxed) {
-        // Read sound
-        record.read(&mut buffer).expect("Failed to read audio");
+        // Read audio
+        record.read(&mut buf).expect("Failed to read audio");
 
-        // Write sound
+        // Calculate volume (RMS)
+        let volume = volume::calculate_volume(&buf, &spec.format);
+
+        // Skip the rest when no sound detected
+        if volume == 0 as f64 {
+            continue;
+        }
+
+        // Apply volume adjustment
+        let target_volume = 0.5; // Desired RMS level (0.0 to 1.0)
+        let gain = (target_volume / volume).min(2.0); // Clamp gain to 2x
+        let buffer = volume::adjust_volume(&buf, &spec.format, gain);
+
+        // Write/Play audio
         playback.write(&buffer).expect("Playback failed");
     }
 

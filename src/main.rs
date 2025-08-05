@@ -1,5 +1,4 @@
 // Main file
-// Update 5: Implemented generic approach (removed hardcoded staff), now it may work on any PulseAudio/Pipewire device :)
 
 mod sink;
 use sink::VirtualSink;
@@ -14,13 +13,10 @@ use libpulse_binding::stream::Direction;
 use libpulse_simple_binding::Simple;
 
 fn main() {
+    // Constants
     const APP_NAME: &str = "Echo Difffer";
-    let sink_name = "EchoDifffer";
-
-    let virtual_sink = VirtualSink::new(sink_name, APP_NAME);
-    let spec = virtual_sink.original_spec();
-
-    let buffer_attr = BufferAttr {
+    const SINK_NAME: &str = "EchoDifffer";
+    const RECORD_BUFFER_ATTR: BufferAttr = BufferAttr {
         maxlength: u32::MAX,
         tlength: 1024,
         prebuf: 1024,
@@ -28,6 +24,14 @@ fn main() {
         fragsize: 256,
     };
 
+    // Create Virtual Sink - Something like Sound Middleware
+    let virtual_sink = VirtualSink::new(SINK_NAME, APP_NAME);
+
+    // Get the Audio Spec from original device to create the streams accordingly
+    let spec = virtual_sink.original_spec();
+    assert!(spec.is_valid()); // Just make sure it is valid
+
+    // Record stream
     let record = Simple::new(
         None,
         APP_NAME,
@@ -36,10 +40,11 @@ fn main() {
         "Audio Record",
         &spec,
         None,
-        Some(&buffer_attr),
+        Some(&RECORD_BUFFER_ATTR),
     )
     .expect("Failed to create simple PulseAudio connection");
 
+    // Playback stream
     let playback = Simple::new(
         None,
         APP_NAME,
@@ -52,7 +57,7 @@ fn main() {
     )
     .expect("Failed to create playback stream");
 
-    // spawn another thread
+    // Use threads and atomic bool to create a proper application loop
     let running = Arc::new(AtomicBool::new(true));
     let r = running.clone();
 
@@ -60,14 +65,26 @@ fn main() {
         println!(
             "Type anything (+ Enter) to close the app peacefully\nOtherwise your device sound might not be broken... :("
         );
+        // Read user input
         let mut input = String::new();
         io::stdin().read_line(&mut input).unwrap();
+
+        // Update the value to quit the application
         r.store(false, Ordering::Relaxed);
     });
 
+    // Sound Buffer
     let mut buffer = [0u8; 1024];
+    
+    // Use while loop to finish the application as intended
     while running.load(Ordering::Relaxed) {
+        // Read sound
         record.read(&mut buffer).expect("Failed to read audio");
+
+        // Write sound
         playback.write(&buffer).expect("Playback failed");
     }
+
+    // Need to make sure to reach the end to trigger proper Drop of Virtual Sink
+    // Otherwise it would not be removed and sound would be redirected there... :(
 }

@@ -20,6 +20,7 @@ pub struct VirtualSink {
 }
 
 impl VirtualSink {
+    // Create Virtual Sink + make it a default one + store details about original sound source
     pub fn new(name: &str, app_name: &'static str) -> Self {
         let mut mainloop = Mainloop::new().expect("Failed to create mainloop");
         let mut proplist = Proplist::new().expect("Failed to create proplist");
@@ -68,6 +69,7 @@ impl VirtualSink {
             .unwrap()
             .expect("Failed to initialise Default Sink");
 
+        // Get Default Sink Spec
         let default_sink_spec_ref = Arc::new(Mutex::new(None::<Spec>));
         let default_sink_spec_ref_clone = Arc::clone(&default_sink_spec_ref);
         let op = context
@@ -125,6 +127,7 @@ impl VirtualSink {
         }
     }
 
+    // Function to keep waiting until Operation finishes as intended
     fn wait_for_operation(mainloop: &mut Mainloop, op: Operation<impl FnOnce()>) {
         while op.get_state() != libpulse_binding::operation::State::Done {
             match mainloop.iterate(false) {
@@ -147,6 +150,8 @@ impl VirtualSink {
     }
 }
 
+// Remove the Virtual Sink when application ends
+// Be careful! 'Drop' crate does not trigger when application forcefully killed!
 impl Drop for VirtualSink {
     fn drop(&mut self) {
         let op = self

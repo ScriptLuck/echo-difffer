@@ -101,7 +101,7 @@ impl VirtualSink {
         let module_ref_clone = Arc::clone(&module_ref);
         let op = context.introspect().load_module(
             "module-null-sink",
-            &format!("sink_name={}", name),
+            &format!("sink_name={} audio.volume=1.0", name), // Name the sink and set volume to 100%
             Box::new(move |idx| *module_ref_clone.lock().unwrap() = Some(idx)),
         );
         let op: Operation<Box<dyn FnOnce()>> = unsafe { std::mem::transmute(op) };

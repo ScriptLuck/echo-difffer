@@ -86,9 +86,9 @@ fn main() {
 
     // Update volume gradually to reduce sound corruption
     // Configs of volume update
-    let target_volume_lvl = 0.2; // Desired RMS level (0.0 to 1.0)
-    let gain_factor = 0.05; // Set lower for smoother adjustments (0.0 to 1.0)
-    let clamp_lvl = 4.0; // Max set virtual volume to 400% (min = 1/`clamp_lvl` ~ 25%)
+    let target_volume_lvl = 0.16; // Desired RMS level (0.0 to 1.0)
+    let gain_factor = 0.02; // Set lower for smoother adjustments (0.0 to 1.0)
+    let clamp_max = 4.0; // Max set virtual volume to 400% (min = 1/`clamp_lvl` ~ 25%)
 
     let mut current_volume: f64 = 1.0;
 
@@ -103,10 +103,13 @@ fn main() {
         }
 
         // Calculate volume (RMS)
-        let volume = volume::calculate_volume(&buf, &spec.format);
+        let volume_lvl = volume::calculate_volume(&buf, &spec.format);
 
         // Calculate target volume
-        let target_volume: f64 = (target_volume_lvl / volume).min(clamp_lvl).max(1.0 / clamp_lvl);
+        let target_volume: f64 = target_volume_lvl / volume_lvl;
+        // Clamp with max & min values to avoid edge values
+        let target_volume = target_volume.min(clamp_max).max(1.0 / clamp_max);
+
         // Gradually update virtual volume
         current_volume += gain_factor * (target_volume - current_volume);
 

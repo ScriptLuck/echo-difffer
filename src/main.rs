@@ -18,10 +18,37 @@ use libpulse_binding::def::BufferAttr;
 use libpulse_binding::stream::Direction;
 use libpulse_simple_binding::Simple;
 
+// Command-Line arguments
+use std::env;
+
 fn main() {
     // Constants
     const APP_NAME: &str = "Echo Difffer";
     const SINK_NAME: &str = "EchoDifffer";
+
+    // Collect the command-line arguments
+    let args: Vec<String> = env::args().collect();
+
+    // Check if too many arguments
+    if args.len() > 4 {
+        println!("Please read documentation on how to use the app");
+        return;
+    }
+
+    // Check if arguments are valid
+    let mut envs: Vec<f64> = Vec::new();
+    for (i, arg) in args.iter().skip(1).take(3).enumerate() {
+        match arg.parse::<f64>() {
+            Ok(a) if ((i < 2 && a >= 0.0 && a <= 1.0) || (i == 2 && a >= 1.0)) => envs.push(a),
+            _ => {
+                println!(
+                    "Error: '{}' is not a valid number.\nPlease read documentation on how to use the app",
+                    arg
+                );
+                return;
+            }
+        }
+    }
 
     // Create Virtual Sink - Something like Sound Middleware
     let virtual_sink = VirtualSink::new(SINK_NAME, APP_NAME);
@@ -85,10 +112,14 @@ fn main() {
     let mut buf = vec![0u8; 1024 * 4];
 
     // Update volume gradually to reduce sound corruption
-    // Configs of volume update
-    let target_volume_lvl = 0.16; // Desired RMS level (0.0 to 1.0)
-    let gain_factor = 0.02; // Set lower for smoother adjustments (0.0 to 1.0)
-    let clamp_max = 4.0; // Max set virtual volume to 400% (min = 1/`clamp_lvl` ~ 25%)
+    // Configs of volume update:
+
+    // Desired RMS level | Set lower for quieter sounds (0.0 to 1.0)
+    let target_volume_lvl = if envs.len() > 0 { envs[0] } else { 0.16 };
+    // Desired gain factor | Set lower for smoother adjustments (0.0 to 1.0)
+    let gain_factor = if envs.len() > 1 { envs[1] } else { 0.02 };
+    // Desired clamp level | Set max virtual volume to `clamp_max`, and min to 1/`clamp_max`
+    let clamp_max = if envs.len() > 2 { envs[2] } else { 2.0 };
 
     let mut current_volume: f64 = 1.0;
 
